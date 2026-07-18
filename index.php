@@ -1,0 +1,150 @@
+<?php
+/**
+ * Album Foto Family Lubis (Full album berisi foto + label di bawah)
+ * Logika PHP: menangani submit form kontak (validasi + simpan ke file pesan.txt)
+ */
+
+$namaVal = '';
+$emailVal = '';
+$pesanVal = '';
+$formMsg = '';
+$formMsgType = ''; // 'success' atau 'error'
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['kirim_pesan'])) {
+
+    $namaVal  = trim($_POST['nama'] ?? '');
+    $emailVal = trim($_POST['email'] ?? '');
+    $pesanVal = trim($_POST['pesan'] ?? '');
+
+    $errors = [];
+    if ($namaVal === '') {
+        $errors[] = 'Nama wajib diisi.';
+    }
+    if ($emailVal === '' || !filter_var($emailVal, FILTER_VALIDATE_EMAIL)) {
+        $errors[] = 'Email tidak valid.';
+    }
+    if ($pesanVal === '') {
+        $errors[] = 'Pesan tidak boleh kosong.';
+    }
+
+    if (empty($errors)) {
+        $baris = sprintf(
+            "[%s] %s <%s>: %s\n",
+            date('Y-m-d H:i:s'),
+            $namaVal,
+            $emailVal,
+            str_replace(["\r", "\n"], ' ', $pesanVal)
+        );
+        @file_put_contents(__DIR__ . '/pesan.txt', $baris, FILE_APPEND | LOCK_EX);
+
+        $formMsg = 'Terima kasih, ' . htmlspecialchars($namaVal) . '! Pesan Anda sudah kami terima.';
+        $formMsgType = 'success';
+
+        $namaVal = '';
+        $emailVal = '';
+        $pesanVal = '';
+    } else {
+        $formMsg = implode(' ', $errors);
+        $formMsgType = 'error';
+    }
+}
+
+// Ambil SEMUA foto yang ada di folder
+$allowed = ['jpg','jpeg','png','webp'];
+$existingPhotos = [];
+
+foreach (scandir(__DIR__) as $f) {
+    $ext = strtolower(pathinfo($f, PATHINFO_EXTENSION));
+    if (!in_array($ext, $allowed, true)) continue;
+
+    $filename = pathinfo($f, PATHINFO_FILENAME);
+    $label = ucwords(trim(str_replace(['-','_','.'], ' ', $filename)));
+
+    $existingPhotos[] = ['file' => $f, 'label' => $label];
+}
+
+// Urut stabil
+usort($existingPhotos, fn($a, $b) => strnatcasecmp($a['file'], $b['file']));
+
+// Pastikan foto bernama 'opung' ada paling depan
+$opungIndex = null;
+foreach ($existingPhotos as $i => $p) {
+    $base = strtolower(pathinfo($p['file'], PATHINFO_FILENAME));
+    if ($base === 'opung' || $p['file'] === 'opung.jpg') {
+        $opungIndex = $i;
+        break;
+    }
+}
+
+if ($opungIndex !== null && $opungIndex !== 0) {
+    $opung = $existingPhotos[$opungIndex];
+    array_splice($existingPhotos, $opungIndex, 1);
+    array_unshift($existingPhotos, $opung);
+}
+?>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Album Foto Family Lubis</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="album" aria-label="Album foto">
+    <h1 class="album-title">Keluarga Lubis</h1>
+
+    <?php
+      $opung = $existingPhotos[0] ?? null;
+      $members = array_slice($existingPhotos, 1);
+    ?>
+
+    <section class="tree" aria-label="Pohon keluarga">
+      <?php if ($opung): ?>
+        <figure class="opung-card" title="<?= htmlspecialchars($opung['label']) ?>">
+          <div class="tape tape-opung"></div>
+          <div class="opung-photo-wrap">
+            <img class="opung-photo" src="<?= htmlspecialchars($opung['file']) ?>" alt="<?= htmlspecialchars($opung['label']) ?>">
+          </div>
+          <figcaption class="opung-caption"><?= htmlspecialchars($opung['label']) ?></figcaption>
+        </figure>
+      <?php endif; ?>
+
+      <div class="tree-lines" aria-hidden="true">
+        <div class="line trunk"></div>
+        <div class="line branch left"></div>
+        <div class="line branch right"></div>
+      </div>
+
+      <div class="member-grid" role="list">
+        <?php foreach ($members as $p): ?>
+          <figure class="member-card" role="listitem">
+            <div class="member-tape"></div>
+            <img src="<?= htmlspecialchars($p['file']) ?>" alt="<?= htmlspecialchars($p['label']) ?>">
+            <!-- Nama foto anggota disembunyikan (kecuali OPUNG) -->
+          </figure>
+        <?php endforeach; ?>
+      </div>
+
+    </section>
+
+    <!-- Opsional kontak (boleh tetap ada, tapi tidak mengganggu album) -->
+    <?php if (false): ?>
+    <section class="contact" id="kontak">
+      <div class="contact-card">
+        <?php if ($formMsg): ?>
+          <div class="form-msg <?= htmlspecialchars($formMsgType) ?>"><?= htmlspecialchars($formMsg) ?></div>
+        <?php endif; ?>
+        <form class="contact-form" method="POST" action="#kontak">
+          <input type="text" name="nama" placeholder="Nama Anda" value="<?= htmlspecialchars($namaVal) ?>" required>
+          <input type="email" name="email" placeholder="Email Anda" value="<?= htmlspecialchars($emailVal) ?>" required>
+          <textarea name="pesan" rows="3" placeholder="Pesan Anda" required><?= htmlspecialchars($pesanVal) ?></textarea>
+          <button type="submit" name="kirim_pesan" value="1">Kirim Pesan</button>
+        </form>
+      </div>
+    </section>
+    <?php endif; ?>
+  </main>
+</body>
+</html>
+
